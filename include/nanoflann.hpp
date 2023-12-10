@@ -272,8 +272,7 @@ class RKNNResultSet
         indices = indices_;
         dists   = dists_;
         count   = 0;
-        if (capacity)
-            dists[capacity - 1] = maximumSearchDistanceSquared;
+        if (capacity) dists[capacity - 1] = maximumSearchDistanceSquared;
     }
 
     CountType size() const { return count; }
@@ -986,10 +985,53 @@ struct array_or_vector<-1, T>
  * \tparam IndexType Type of the arguments with which the data can be
  * accessed (e.g. float, double, int64_t, T*)
  */
+// ANCHOR - KDTreeBase
+
+/** @addtogroup kdtrees_grp KD-tree classes and adaptors
+ * @{ */
+
+/** kd-tree static index
+ *
+ * Contains the k-d trees and other information for indexing a set of points
+ * for nearest-neighbor matching.
+ *
+ *  The class "DatasetAdaptor" must provide the following interface (can be
+ * non-virtual, inlined methods):
+ *
+ *  \code
+ *   // Must return the number of data poins
+ *   size_t kdtree_get_point_count() const { ... }
+ *
+ *
+ *   // Must return the dim'th component of the idx'th point in the class:
+ *   T kdtree_get_pt(const size_t idx, const size_t dim) const { ... }
+ *
+ *   // Optional bounding-box computation: return false to default to a standard
+ * bbox computation loop.
+ *   //   Return true if the BBOX was already computed by the class and returned
+ * in "bb" so it can be avoided to redo it again.
+ *   //   Look at bb.size() to find out the expected dimensionality (e.g. 2 or 3
+ * for point clouds) template <class BBOX> bool kdtree_get_bbox(BBOX &bb) const
+ *   {
+ *      bb[0].low = ...; bb[0].high = ...;  // 0th dimension limits
+ *      bb[1].low = ...; bb[1].high = ...;  // 1st dimension limits
+ *      ...
+ *      return true;
+ *   }
+ *
+ *  \endcode
+ *
+ * \tparam DatasetAdaptor The user-provided adaptor, which must be ensured to
+ *         have a lifetime equal or longer than the instance of this class.
+ * \tparam Distance The distance metric to use: nanoflann::metric_L1,
+ * nanoflann::metric_L2, nanoflann::metric_L2_Simple, etc. \tparam DIM
+ * Dimensionality of data points (e.g. 3 for 3D points) \tparam IndexType Will
+ * be typically size_t or int
+ */
 template <
-    class Derived, typename Distance, class DatasetAdaptor, int32_t DIM = -1,
+    typename Distance, class DatasetAdaptor, int32_t DIM = -1,
     typename IndexType = uint32_t>
-class KDTreeBaseClass
+class KDTreeSingleIndexAdaptor
 {
    public:
     /** Frees the previously-built index. Automatically called within
@@ -1241,8 +1283,9 @@ class KDTreeBaseClass
             if (++thread_count < n_thread_build_)
             {
                 left_future = std::async(
-                    std::launch::async, &KDTreeBaseClass::divideTreeConcurrent,
-                    this, std::ref(obj), left, left + idx, std::ref(left_bbox),
+                    std::launch::async,
+                    &KDTreeSingleIndexAdaptor::divideTreeConcurrent, this,
+                    std::ref(obj), left, left + idx, std::ref(left_bbox),
                     std::ref(thread_count), std::ref(mutex));
             }
             else
@@ -1257,10 +1300,10 @@ class KDTreeBaseClass
             if (++thread_count < n_thread_build_)
             {
                 right_future = std::async(
-                    std::launch::async, &KDTreeBaseClass::divideTreeConcurrent,
-                    this, std::ref(obj), left + idx, right,
-                    std::ref(right_bbox), std::ref(thread_count),
-                    std::ref(mutex));
+                    std::launch::async,
+                    &KDTreeSingleIndexAdaptor::divideTreeConcurrent, this,
+                    std::ref(obj), left + idx, right, std::ref(right_bbox),
+                    std::ref(thread_count), std::ref(mutex));
             }
             else
             {
@@ -1307,7 +1350,7 @@ class KDTreeBaseClass
         }
         ElementType max_spread = -1;
         cutfeat                = 0;
-        ElementType  min_elem = 0, max_elem = 0;
+        ElementType min_elem = 0, max_elem = 0;
         for (Dimension i = 0; i < dims; ++i)
         {
             ElementType span = bbox[i].high - bbox[i].low;
@@ -1320,8 +1363,8 @@ class KDTreeBaseClass
                 {
                     cutfeat    = i;
                     max_spread = spread;
-                    min_elem = min_elem_;
-                    max_elem = max_elem_;
+                    min_elem   = min_elem_;
+                    max_elem   = max_elem_;
                 }
             }
         }
@@ -1469,58 +1512,7 @@ class KDTreeBaseClass
         load_value(stream, obj.vAcc_);
         load_tree(obj, stream, obj.root_node_);
     }
-};
 
-/** @addtogroup kdtrees_grp KD-tree classes and adaptors
- * @{ */
-
-/** kd-tree static index
- *
- * Contains the k-d trees and other information for indexing a set of points
- * for nearest-neighbor matching.
- *
- *  The class "DatasetAdaptor" must provide the following interface (can be
- * non-virtual, inlined methods):
- *
- *  \code
- *   // Must return the number of data poins
- *   size_t kdtree_get_point_count() const { ... }
- *
- *
- *   // Must return the dim'th component of the idx'th point in the class:
- *   T kdtree_get_pt(const size_t idx, const size_t dim) const { ... }
- *
- *   // Optional bounding-box computation: return false to default to a standard
- * bbox computation loop.
- *   //   Return true if the BBOX was already computed by the class and returned
- * in "bb" so it can be avoided to redo it again.
- *   //   Look at bb.size() to find out the expected dimensionality (e.g. 2 or 3
- * for point clouds) template <class BBOX> bool kdtree_get_bbox(BBOX &bb) const
- *   {
- *      bb[0].low = ...; bb[0].high = ...;  // 0th dimension limits
- *      bb[1].low = ...; bb[1].high = ...;  // 1st dimension limits
- *      ...
- *      return true;
- *   }
- *
- *  \endcode
- *
- * \tparam DatasetAdaptor The user-provided adaptor, which must be ensured to
- *         have a lifetime equal or longer than the instance of this class.
- * \tparam Distance The distance metric to use: nanoflann::metric_L1,
- * nanoflann::metric_L2, nanoflann::metric_L2_Simple, etc. \tparam DIM
- * Dimensionality of data points (e.g. 3 for 3D points) \tparam IndexType Will
- * be typically size_t or int
- */
-template <
-    typename Distance, class DatasetAdaptor, int32_t DIM = -1,
-    typename IndexType = uint32_t>
-class KDTreeSingleIndexAdaptor
-    : public KDTreeBaseClass<
-          KDTreeSingleIndexAdaptor<Distance, DatasetAdaptor, DIM, IndexType>,
-          Distance, DatasetAdaptor, DIM, IndexType>
-{
-   public:
     /** Deleted copy constructor*/
     explicit KDTreeSingleIndexAdaptor(
         const KDTreeSingleIndexAdaptor<
@@ -1533,9 +1525,7 @@ class KDTreeSingleIndexAdaptor
 
     Distance distance_;
 
-    using Base = typename nanoflann::KDTreeBaseClass<
-        nanoflann::KDTreeSingleIndexAdaptor<
-            Distance, DatasetAdaptor, DIM, IndexType>,
+    using Base = typename nanoflann::KDTreeSingleIndexAdaptor<
         Distance, DatasetAdaptor, DIM, IndexType>;
 
     using Offset    = typename Base::Offset;
@@ -1987,12 +1977,489 @@ template <
     typename Distance, class DatasetAdaptor, int32_t DIM = -1,
     typename IndexType = uint32_t>
 class KDTreeSingleIndexDynamicAdaptor_
-    : public KDTreeBaseClass<
-          KDTreeSingleIndexDynamicAdaptor_<
-              Distance, DatasetAdaptor, DIM, IndexType>,
-          Distance, DatasetAdaptor, DIM, IndexType>
 {
    public:
+   public:
+    /** Frees the previously-built index. Automatically called within
+     * buildIndex(). */
+    void freeIndex(Derived& obj)
+    {
+        obj.pool_.free_all();
+        obj.root_node_           = nullptr;
+        obj.size_at_index_build_ = 0;
+    }
+
+    using ElementType  = typename Distance::ElementType;
+    using DistanceType = typename Distance::DistanceType;
+
+    /**
+     *  Array of indices to vectors in the dataset_.
+     */
+    std::vector<IndexType> vAcc_;
+
+    using Offset    = typename decltype(vAcc_)::size_type;
+    using Size      = typename decltype(vAcc_)::size_type;
+    using Dimension = int32_t;
+
+    /*---------------------------
+     * Internal Data Structures
+     * --------------------------*/
+    struct Node
+    {
+        /** Union used because a node can be either a LEAF node or a non-leaf
+         * node, so both data fields are never used simultaneously */
+        union
+        {
+            struct leaf
+            {
+                Offset left, right;  //!< Indices of points in leaf node
+            } lr;
+            struct nonleaf
+            {
+                Dimension divfeat;  //!< Dimension used for subdivision.
+                /// The values used for subdivision.
+                DistanceType divlow, divhigh;
+            } sub;
+        } node_type;
+
+        /** Child nodes (both=nullptr mean its a leaf node) */
+        Node *child1 = nullptr, *child2 = nullptr;
+    };
+
+    using NodePtr      = Node*;
+    using NodeConstPtr = const Node*;
+
+    struct Interval
+    {
+        ElementType low, high;
+    };
+
+    NodePtr root_node_ = nullptr;
+
+    Size leaf_max_size_ = 0;
+
+    /// Number of thread for concurrent tree build
+    Size n_thread_build_ = 1;
+    /// Number of current points in the dataset
+    Size size_ = 0;
+    /// Number of points in the dataset when the index was built
+    Size      size_at_index_build_ = 0;
+    Dimension dim_                 = 0;  //!< Dimensionality of each data point
+
+    /** Define "BoundingBox" as a fixed-size or variable-size container
+     * depending on "DIM" */
+    using BoundingBox = typename array_or_vector<DIM, Interval>::type;
+
+    /** Define "distance_vector_t" as a fixed-size or variable-size container
+     * depending on "DIM" */
+    using distance_vector_t = typename array_or_vector<DIM, DistanceType>::type;
+
+    /** The KD-tree used to find neighbours */
+    BoundingBox root_bbox_;
+
+    /**
+     * Pooled memory allocator.
+     *
+     * Using a pooled memory allocator is more efficient
+     * than allocating memory directly when there is a large
+     * number small of memory allocations.
+     */
+    PooledAllocator pool_;
+
+    /** Returns number of points in dataset  */
+    Size size(const Derived& obj) const { return obj.size_; }
+
+    /** Returns the length of each point in the dataset */
+    Size veclen(const Derived& obj) { return DIM > 0 ? DIM : obj.dim; }
+
+    /// Helper accessor to the dataset points:
+    ElementType dataset_get(
+        const Derived& obj, IndexType element, Dimension component) const
+    {
+        return obj.dataset_.kdtree_get_pt(element, component);
+    }
+
+    /**
+     * Computes the inde memory usage
+     * Returns: memory used by the index
+     */
+    Size usedMemory(Derived& obj)
+    {
+        return obj.pool_.usedMemory + obj.pool_.wastedMemory +
+               obj.dataset_.kdtree_get_point_count() *
+                   sizeof(IndexType);  // pool memory and vind array memory
+    }
+
+    void computeMinMax(
+        const Derived& obj, Offset ind, Size count, Dimension element,
+        ElementType& min_elem, ElementType& max_elem)
+    {
+        min_elem = dataset_get(obj, vAcc_[ind], element);
+        max_elem = min_elem;
+        for (Offset i = 1; i < count; ++i)
+        {
+            ElementType val = dataset_get(obj, vAcc_[ind + i], element);
+            if (val < min_elem) min_elem = val;
+            if (val > max_elem) max_elem = val;
+        }
+    }
+
+    /**
+     * Create a tree node that subdivides the list of vecs from vind[first]
+     * to vind[last].  The routine is called recursively on each sublist.
+     *
+     * @param left index of the first vector
+     * @param right index of the last vector
+     */
+    NodePtr divideTree(
+        Derived& obj, const Offset left, const Offset right, BoundingBox& bbox)
+    {
+        NodePtr node = obj.pool_.template allocate<Node>();  // allocate memory
+        const auto dims = (DIM > 0 ? DIM : obj.dim_);
+
+        /* If too few exemplars remain, then make this a leaf node. */
+        if ((right - left) <= static_cast<Offset>(obj.leaf_max_size_))
+        {
+            node->child1 = node->child2 = nullptr; /* Mark as leaf node. */
+            node->node_type.lr.left     = left;
+            node->node_type.lr.right    = right;
+
+            // compute bounding-box of leaf points
+            for (Dimension i = 0; i < dims; ++i)
+            {
+                bbox[i].low  = dataset_get(obj, obj.vAcc_[left], i);
+                bbox[i].high = dataset_get(obj, obj.vAcc_[left], i);
+            }
+            for (Offset k = left + 1; k < right; ++k)
+            {
+                for (Dimension i = 0; i < dims; ++i)
+                {
+                    const auto val = dataset_get(obj, obj.vAcc_[k], i);
+                    if (bbox[i].low > val) bbox[i].low = val;
+                    if (bbox[i].high < val) bbox[i].high = val;
+                }
+            }
+        }
+        else
+        {
+            Offset       idx;
+            Dimension    cutfeat;
+            DistanceType cutval;
+            middleSplit_(obj, left, right - left, idx, cutfeat, cutval, bbox);
+
+            node->node_type.sub.divfeat = cutfeat;
+
+            BoundingBox left_bbox(bbox);
+            left_bbox[cutfeat].high = cutval;
+            node->child1 = this->divideTree(obj, left, left + idx, left_bbox);
+
+            BoundingBox right_bbox(bbox);
+            right_bbox[cutfeat].low = cutval;
+            node->child2 = this->divideTree(obj, left + idx, right, right_bbox);
+
+            node->node_type.sub.divlow  = left_bbox[cutfeat].high;
+            node->node_type.sub.divhigh = right_bbox[cutfeat].low;
+
+            for (Dimension i = 0; i < dims; ++i)
+            {
+                bbox[i].low  = std::min(left_bbox[i].low, right_bbox[i].low);
+                bbox[i].high = std::max(left_bbox[i].high, right_bbox[i].high);
+            }
+        }
+
+        return node;
+    }
+
+    /**
+     * Create a tree node that subdivides the list of vecs from vind[first] to
+     * vind[last] concurrently.  The routine is called recursively on each
+     * sublist.
+     *
+     * @param left index of the first vector
+     * @param right index of the last vector
+     * @param thread_count count of std::async threads
+     * @param mutex mutex for mempool allocation
+     */
+    NodePtr divideTreeConcurrent(
+        Derived& obj, const Offset left, const Offset right, BoundingBox& bbox,
+        std::atomic<unsigned int>& thread_count, std::mutex& mutex)
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        NodePtr node = obj.pool_.template allocate<Node>();  // allocate memory
+        lock.unlock();
+
+        const auto dims = (DIM > 0 ? DIM : obj.dim_);
+
+        /* If too few exemplars remain, then make this a leaf node. */
+        if ((right - left) <= static_cast<Offset>(obj.leaf_max_size_))
+        {
+            node->child1 = node->child2 = nullptr; /* Mark as leaf node. */
+            node->node_type.lr.left     = left;
+            node->node_type.lr.right    = right;
+
+            // compute bounding-box of leaf points
+            for (Dimension i = 0; i < dims; ++i)
+            {
+                bbox[i].low  = dataset_get(obj, obj.vAcc_[left], i);
+                bbox[i].high = dataset_get(obj, obj.vAcc_[left], i);
+            }
+            for (Offset k = left + 1; k < right; ++k)
+            {
+                for (Dimension i = 0; i < dims; ++i)
+                {
+                    const auto val = dataset_get(obj, obj.vAcc_[k], i);
+                    if (bbox[i].low > val) bbox[i].low = val;
+                    if (bbox[i].high < val) bbox[i].high = val;
+                }
+            }
+        }
+        else
+        {
+            Offset       idx;
+            Dimension    cutfeat;
+            DistanceType cutval;
+            middleSplit_(obj, left, right - left, idx, cutfeat, cutval, bbox);
+
+            node->node_type.sub.divfeat = cutfeat;
+
+            std::future<NodePtr> left_future, right_future;
+
+            BoundingBox left_bbox(bbox);
+            left_bbox[cutfeat].high = cutval;
+            if (++thread_count < n_thread_build_)
+            {
+                left_future = std::async(
+                    std::launch::async,
+                    &KDTreeSingleIndexDynamicAdaptor_::divideTreeConcurrent,
+                    this, std::ref(obj), left, left + idx, std::ref(left_bbox),
+                    std::ref(thread_count), std::ref(mutex));
+            }
+            else
+            {
+                --thread_count;
+                node->child1 = this->divideTreeConcurrent(
+                    obj, left, left + idx, left_bbox, thread_count, mutex);
+            }
+
+            BoundingBox right_bbox(bbox);
+            right_bbox[cutfeat].low = cutval;
+            if (++thread_count < n_thread_build_)
+            {
+                right_future = std::async(
+                    std::launch::async,
+                    &KDTreeSingleIndexDynamicAdaptor_::divideTreeConcurrent,
+                    this, std::ref(obj), left + idx, right,
+                    std::ref(right_bbox), std::ref(thread_count),
+                    std::ref(mutex));
+            }
+            else
+            {
+                --thread_count;
+                node->child2 = this->divideTreeConcurrent(
+                    obj, left + idx, right, right_bbox, thread_count, mutex);
+            }
+
+            if (left_future.valid())
+            {
+                node->child1 = left_future.get();
+                --thread_count;
+            }
+            if (right_future.valid())
+            {
+                node->child2 = right_future.get();
+                --thread_count;
+            }
+
+            node->node_type.sub.divlow  = left_bbox[cutfeat].high;
+            node->node_type.sub.divhigh = right_bbox[cutfeat].low;
+
+            for (Dimension i = 0; i < dims; ++i)
+            {
+                bbox[i].low  = std::min(left_bbox[i].low, right_bbox[i].low);
+                bbox[i].high = std::max(left_bbox[i].high, right_bbox[i].high);
+            }
+        }
+
+        return node;
+    }
+
+    void middleSplit_(
+        const Derived& obj, const Offset ind, const Size count, Offset& index,
+        Dimension& cutfeat, DistanceType& cutval, const BoundingBox& bbox)
+    {
+        const auto  dims     = (DIM > 0 ? DIM : obj.dim_);
+        const auto  EPS      = static_cast<DistanceType>(0.00001);
+        ElementType max_span = bbox[0].high - bbox[0].low;
+        for (Dimension i = 1; i < dims; ++i)
+        {
+            ElementType span = bbox[i].high - bbox[i].low;
+            if (span > max_span) { max_span = span; }
+        }
+        ElementType max_spread = -1;
+        cutfeat                = 0;
+        ElementType min_elem = 0, max_elem = 0;
+        for (Dimension i = 0; i < dims; ++i)
+        {
+            ElementType span = bbox[i].high - bbox[i].low;
+            if (span > (1 - EPS) * max_span)
+            {
+                ElementType min_elem_, max_elem_;
+                computeMinMax(obj, ind, count, i, min_elem_, max_elem_);
+                ElementType spread = max_elem_ - min_elem_;
+                if (spread > max_spread)
+                {
+                    cutfeat    = i;
+                    max_spread = spread;
+                    min_elem   = min_elem_;
+                    max_elem   = max_elem_;
+                }
+            }
+        }
+        // split in the middle
+        DistanceType split_val = (bbox[cutfeat].low + bbox[cutfeat].high) / 2;
+
+        if (split_val < min_elem)
+            cutval = min_elem;
+        else if (split_val > max_elem)
+            cutval = max_elem;
+        else
+            cutval = split_val;
+
+        Offset lim1, lim2;
+        planeSplit(obj, ind, count, cutfeat, cutval, lim1, lim2);
+
+        if (lim1 > count / 2)
+            index = lim1;
+        else if (lim2 < count / 2)
+            index = lim2;
+        else
+            index = count / 2;
+    }
+
+    /**
+     *  Subdivide the list of points by a plane perpendicular on the axis
+     * corresponding to the 'cutfeat' dimension at 'cutval' position.
+     *
+     *  On return:
+     *  dataset[ind[0..lim1-1]][cutfeat]<cutval
+     *  dataset[ind[lim1..lim2-1]][cutfeat]==cutval
+     *  dataset[ind[lim2..count]][cutfeat]>cutval
+     */
+    void planeSplit(
+        const Derived& obj, const Offset ind, const Size count,
+        const Dimension cutfeat, const DistanceType& cutval, Offset& lim1,
+        Offset& lim2)
+    {
+        /* Move vector indices for left subtree to front of list. */
+        Offset left  = 0;
+        Offset right = count - 1;
+        for (;;)
+        {
+            while (left <= right &&
+                   dataset_get(obj, vAcc_[ind + left], cutfeat) < cutval)
+                ++left;
+            while (right && left <= right &&
+                   dataset_get(obj, vAcc_[ind + right], cutfeat) >= cutval)
+                --right;
+            if (left > right || !right)
+                break;  // "!right" was added to support unsigned Index types
+            std::swap(vAcc_[ind + left], vAcc_[ind + right]);
+            ++left;
+            --right;
+        }
+        /* If either list is empty, it means that all remaining features
+         * are identical. Split in the middle to maintain a balanced tree.
+         */
+        lim1  = left;
+        right = count - 1;
+        for (;;)
+        {
+            while (left <= right &&
+                   dataset_get(obj, vAcc_[ind + left], cutfeat) <= cutval)
+                ++left;
+            while (right && left <= right &&
+                   dataset_get(obj, vAcc_[ind + right], cutfeat) > cutval)
+                --right;
+            if (left > right || !right)
+                break;  // "!right" was added to support unsigned Index types
+            std::swap(vAcc_[ind + left], vAcc_[ind + right]);
+            ++left;
+            --right;
+        }
+        lim2 = left;
+    }
+
+    DistanceType computeInitialDistances(
+        const Derived& obj, const ElementType* vec,
+        distance_vector_t& dists) const
+    {
+        assert(vec);
+        DistanceType dist = DistanceType();
+
+        for (Dimension i = 0; i < (DIM > 0 ? DIM : obj.dim_); ++i)
+        {
+            if (vec[i] < obj.root_bbox_[i].low)
+            {
+                dists[i] =
+                    obj.distance_.accum_dist(vec[i], obj.root_bbox_[i].low, i);
+                dist += dists[i];
+            }
+            if (vec[i] > obj.root_bbox_[i].high)
+            {
+                dists[i] =
+                    obj.distance_.accum_dist(vec[i], obj.root_bbox_[i].high, i);
+                dist += dists[i];
+            }
+        }
+        return dist;
+    }
+
+    static void save_tree(
+        const Derived& obj, std::ostream& stream, const NodeConstPtr tree)
+    {
+        save_value(stream, *tree);
+        if (tree->child1 != nullptr) { save_tree(obj, stream, tree->child1); }
+        if (tree->child2 != nullptr) { save_tree(obj, stream, tree->child2); }
+    }
+
+    static void load_tree(Derived& obj, std::istream& stream, NodePtr& tree)
+    {
+        tree = obj.pool_.template allocate<Node>();
+        load_value(stream, *tree);
+        if (tree->child1 != nullptr) { load_tree(obj, stream, tree->child1); }
+        if (tree->child2 != nullptr) { load_tree(obj, stream, tree->child2); }
+    }
+
+    /**  Stores the index in a binary file.
+     *   IMPORTANT NOTE: The set of data points is NOT stored in the file, so
+     * when loading the index object it must be constructed associated to the
+     * same source of data points used while building it. See the example:
+     * examples/saveload_example.cpp \sa loadIndex  */
+    void saveIndex(const Derived& obj, std::ostream& stream) const
+    {
+        save_value(stream, obj.size_);
+        save_value(stream, obj.dim_);
+        save_value(stream, obj.root_bbox_);
+        save_value(stream, obj.leaf_max_size_);
+        save_value(stream, obj.vAcc_);
+        if (obj.root_node_) save_tree(obj, stream, obj.root_node_);
+    }
+
+    /**  Loads a previous index from a binary file.
+     *   IMPORTANT NOTE: The set of data points is NOT stored in the file, so
+     * the index object must be constructed associated to the same source of
+     * data points used while building the index. See the example:
+     * examples/saveload_example.cpp \sa loadIndex  */
+    void loadIndex(Derived& obj, std::istream& stream)
+    {
+        load_value(stream, obj.size_);
+        load_value(stream, obj.dim_);
+        load_value(stream, obj.root_bbox_);
+        load_value(stream, obj.leaf_max_size_);
+        load_value(stream, obj.vAcc_);
+        load_tree(obj, stream, obj.root_node_);
+    }
+
     /**
      * The dataset used by this index
      */
@@ -2004,9 +2471,7 @@ class KDTreeSingleIndexDynamicAdaptor_
 
     Distance distance_;
 
-    using Base = typename nanoflann::KDTreeBaseClass<
-        nanoflann::KDTreeSingleIndexDynamicAdaptor_<
-            Distance, DatasetAdaptor, DIM, IndexType>,
+    using Base = nanoflann::KDTreeSingleIndexDynamicAdaptor_<
         Distance, DatasetAdaptor, DIM, IndexType>;
 
     using ElementType  = typename Base::ElementType;
