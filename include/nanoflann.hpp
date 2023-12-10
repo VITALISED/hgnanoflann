@@ -1036,12 +1036,6 @@ class KDTreeSingleIndexAdaptor
    public:
     /** Frees the previously-built index. Automatically called within
      * buildIndex(). */
-    void freeIndex(Derived& obj)
-    {
-        obj.pool_.free_all();
-        obj.root_node_           = nullptr;
-        obj.size_at_index_build_ = 0;
-    }
 
     using ElementType  = typename Distance::ElementType;
     using DistanceType = typename Distance::DistanceType;
@@ -1054,6 +1048,16 @@ class KDTreeSingleIndexAdaptor
     using Offset    = typename decltype(vAcc_)::size_type;
     using Size      = typename decltype(vAcc_)::size_type;
     using Dimension = int32_t;
+
+    using Derived = typename nanoflann::KDTreeSingleIndexAdaptor<
+        Distance, DatasetAdaptor, DIM, IndexType>;
+
+    void freeIndex(Derived& obj)
+    {
+        obj.pool_.free_all();
+        obj.root_node_           = nullptr;
+        obj.size_at_index_build_ = 0;
+    }
 
     /*---------------------------
      * Internal Data Structures
@@ -1979,9 +1983,15 @@ template <
 class KDTreeSingleIndexDynamicAdaptor_
 {
    public:
-   public:
     /** Frees the previously-built index. Automatically called within
      * buildIndex(). */
+
+    using ElementType  = typename Distance::ElementType;
+    using DistanceType = typename Distance::DistanceType;
+
+    using Derived = typename nanoflann::KDTreeSingleIndexDynamicAdaptor_<
+        Distance, DatasetAdaptor, DIM, IndexType>;
+
     void freeIndex(Derived& obj)
     {
         obj.pool_.free_all();
@@ -1989,8 +1999,7 @@ class KDTreeSingleIndexDynamicAdaptor_
         obj.size_at_index_build_ = 0;
     }
 
-    using ElementType  = typename Distance::ElementType;
-    using DistanceType = typename Distance::DistanceType;
+    // ANCHOR - go back to me
 
     /**
      *  Array of indices to vectors in the dataset_.
